@@ -1,6 +1,7 @@
 const Users = require("../models/users");
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const HttpException = require("../utility/HttpException.utils");
 const jwtSecret = process.env.jwtSecret;
 
 function validatePassword(password) {
@@ -22,8 +23,6 @@ class UserController {
 
     signUp = async (req, res, next) => {
 
-        console.log(req.body,'<--body')
-
         let {
             name,
             username,
@@ -31,23 +30,28 @@ class UserController {
         } = req.body
 
 
+        if(!name || !username || !password)
+        {
+            throw new HttpException(400,{message:'name,username and password fields are required to signup.'}) 
+       
+        }
+
+        if(name.length > 20 || username.length > 20)
+        {
+            throw new HttpException(400,{message:'name and username need to be less than 20 characters.'})      
+        }
+
         let userFromDB = await Users.findOne({
             username
         });
 
-        console.log(userFromDB,"<-- user from DB");
-
         if(userFromDB)
         {
-            return res.status(400).json({
-                error: 'username already taken! Please use another username.'
-            });
+            throw new HttpException(400,{message:'username already taken! Please use another username.'}) 
         }
 
         if (!validatePassword(password)) {
-            return res.status(400).json({
-                error: 'Password does not meet the criteria.Need minimum 8 characters, at least one uppercase letter, one lowercase letter, and one number'
-            });
+            throw new HttpException(400,{message:'Password does not meet the criteria.Need minimum 8 characters, at least one uppercase letter, one lowercase letter, and one number'}) 
         }
 
         let hashedPassword = await bcrypt.hash(password, 10);
@@ -60,8 +64,6 @@ class UserController {
 
 
         let result = await user.save();
-
-        console.log(result);
 
         res.status(200).json({
             status:'successful',

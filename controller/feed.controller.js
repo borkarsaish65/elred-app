@@ -4,13 +4,93 @@ const HttpException = require("../utility/HttpException.utils");
 const Status = require('../models/status');
 const AWS = require('aws-sdk');
 const fs = require('fs');
+const { default: mongoose } = require("mongoose");
 
 let s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
 });
 
-//AWS.config.update({ region: 'us-east-2', signatureVersion: 'v4' });
+
+async function validateUserAction(user,statusData)
+{
+
+    let postCreatedBy = statusData.createdBy.toString();
+
+    if(postCreatedBy == user.id)
+    {
+        return;
+    }
+
+    let listOfAllUsersFollowedByUserRelation = await Follower.find({
+        followed_by:postCreatedBy
+    })
+
+    let listOfAllUsersWhoFollowsUserRelation = await Follower.find({
+        followee_id:postCreatedBy
+    })
+
+    let listOfAllUsersFollowedByUserIds = listOfAllUsersFollowedByUserRelation.map((relation)=>relation.followee_id.toString())
+
+    let listOfAllUsersWhoFollowsUserIds = listOfAllUsersWhoFollowsUserRelation.map((relation)=>relation.followed_by.toString())
+
+    if (!listOfAllUsersFollowedByUserIds.includes(user.id) &&
+        !listOfAllUsersWhoFollowsUserIds.includes(user.id) 
+    ) {
+        throw new HttpException(403,{message:"Access restricted: Interaction is limited to users you follow or who follow you"})
+    }
+
+}
+
+function deleteFile(filePath){
+
+    fs.unlink(filePath, (err) => {
+        if (err) {
+          console.error(`Error deleting file: ${err}`);
+        } else {
+          console.log(`File ${filePath} has been deleted successfully.`);
+        }
+      });
+}
+
+function validateFileSize(file,mediaType){
+
+const imageMaxSize = 3145728;
+const videoMaxSize = 10485760;
+
+console.log(file,mediaType)
+
+if(mediaType == 'image')
+{
+
+    if(file.size > imageMaxSize)
+    {
+        return 0
+    }
+}else if(mediaType == 'video')
+{
+    console.log(file.size,videoMaxSize)
+    if(file.size > videoMaxSize)
+    {
+        return 0
+    }
+}
+
+return 1;
+}
+async function UploadFileToBucket(params){
+    return new Promise((resolve,reject)=>{
+        s3.upload(params, function (err, data) {
+            if (err) {
+                console.log(err, err.stack);
+                reject(0)
+            } else {
+                console.log('File uploaded successfully!')
+                resolve(1);
+            };
+        });
+    })
+ }
 
 
 AWS.config.update({ region: 'ap-south-1' });
@@ -80,7 +160,6 @@ class FeedController {
     }
     createStatus = async(req,res,next)=>{
 
-
         let {
             text
         } = req.body;
@@ -114,34 +193,37 @@ class FeedController {
             if(['image/png','image/jpeg'].includes(mimetype))
             {
                 statusData.attachmentType = 'image'
+                let validationResult = validateFileSize(media,'image')
+
+                if(validationResult == 0)
+                {   deleteFile(media.path);
+                    throw new HttpException(400, {
+                        message: 'Image file must be less than 3 MB'
+                    })
+                }
+
             }
             else
             {
                 statusData.attachmentType = 'video'
+                let validationResult = validateFileSize(media,'video')
+
+                console.log(validationResult,'validationResult')
+                if(validationResult == 0)
+                {
+                    deleteFile(media.path);
+                    throw new HttpException(400, {
+                        message: 'video file must be less than 10 MB'
+                    })
+                }
             }
         
-
          const fileContent = fs.readFileSync(media.path);
          const params = {
-             Bucket: 'elredbucket',
+             Bucket: process.env.AWS_BUCKET,
              Key: media.filename,
              Body: fileContent
          };
-
-         async function UploadFileToBucket(params){
-            return new Promise((resolve,reject)=>{
-                s3.upload(params, function (err, data) {
-                    if (err) {
-                        console.log(err, err.stack);
-                        reject(0)
-                    } else {
-                        console.log('File uploaded successfully!')
-                        resolve(1);
-                    };
-                });
-            })
-         }
-
 
         let fileUploadResult =  await UploadFileToBucket(params);
 
@@ -199,19 +281,33 @@ class FeedController {
     }
     viewStatus = async (req, res, next) => {
 
+
         let {status_id} = req.params;
+
+        const validObjectId = mongoose.Types.ObjectId.isValid(status_id);
+
+        if (!validObjectId)  {
+            throw new HttpException(404,{message:'Invalid ObjectId format'}) 
+        }
 
         let user = req.user;
 
         let statusInfo = await Status.findById(status_id);
 
-        console.log(statusInfo);
+        if(!statusInfo)
+        {
+            throw new HttpException(404,'Status not found!') 
+        }
+
+        console.log(statusInfo,"<----")
+        await validateUserAction(user,statusInfo)
+
         let signedUrl = null;
         if(['image','video'].includes(statusInfo.attachmentType))
         {
             console.log(1111)
             const params = {
-                Bucket: 'elredbucket',
+                Bucket: process.env.AWS_BUCKET,
                 Key: statusInfo.storageLink,
                 Expires: 60  * 5// URL expiration time in seconds
               };
@@ -237,11 +333,14 @@ class FeedController {
         let user = req.user;
 
         let statusData = await Status.findById(status_id);
+    
+        console.log(statusData,'statusData<---')
 
-          
         if(!statusData) {
             throw new HttpException(404,'Status not found!')
         }
+
+        await validateUserAction(user,statusData)
 
         if (statusData.likes.includes(user.id)) {
             return res.status(400).json({ error: 'User has already liked the post' });
@@ -276,6 +375,7 @@ class FeedController {
 
         console.log(user,'<--')
 
+        await validateUserAction(user,statusData)
         const newComment = {
             user: user.id,
             text: text,

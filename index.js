@@ -31,8 +31,7 @@ const storage = multer.diskStorage({
           cb(new HttpException(400,{message:'Invalid file type. Only JPEG, PNG, and MP4 are allowed.'}));
         }
 
-      },
-      limits: { fileSize: 1000000 }
+      }
   });
 
 const errorMiddleware = require('./middleware/error.middleware');
@@ -53,7 +52,7 @@ app.use('/feed',feedRouter);
 
 // 404 error
 app.all('*', (req, res, next) => {
-    console.log(req.url);
+
     console.log('Endpoint not found!')
     let err = new Error('Enpoint not found!');
     err.status = 404

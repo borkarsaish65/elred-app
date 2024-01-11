@@ -1,2 +1,8 @@
 node_modules
 .env
+testData.js
+testData2.js
+testData3.js
+testData4.js
+testData5.js
+files/*
