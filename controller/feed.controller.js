@@ -5,6 +5,7 @@ const Status = require('../models/status');
 const AWS = require('aws-sdk');
 const fs = require('fs');
 const { default: mongoose } = require("mongoose");
+const { isValidObjectId } = require("./helper/helper");
 
 let s3 = new AWS.S3({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -117,6 +118,14 @@ class FeedController {
             })
         }
 
+        let isValidId = isValidObjectId(user_id);
+
+        if(!isValidId){
+            throw new HttpException(400, {
+                message: 'This is not a valid user_id'
+            });
+        }
+
         console.log(user_id,'<---user_id')
         let userFromDB = await Users.findOne({
             _id:user_id
@@ -176,6 +185,13 @@ class FeedController {
             })
         }
 
+
+        if(!text && !media){
+            throw new HttpException(404, {
+                message: 'Atleast either text or media field is required.'
+            })
+        }
+
         let statusData = {
             createdBy:user.id
         }
@@ -226,6 +242,8 @@ class FeedController {
          };
 
         let fileUploadResult =  await UploadFileToBucket(params);
+
+         deleteFile(media.path);
 
          if(fileUploadResult == 0)
          {
@@ -332,6 +350,14 @@ class FeedController {
 
         let user = req.user;
 
+        let isValidId = isValidObjectId(status_id);
+
+        if(!isValidId){
+            throw new HttpException(400, {
+                message: 'This is not a valid status_id'
+            });
+        }
+        
         let statusData = await Status.findById(status_id);
     
         console.log(statusData,'statusData<---')
@@ -365,13 +391,34 @@ class FeedController {
             text
         } = req.body;
 
+
+        if(!text){
+            throw new HttpException(400,'text field is required!')
+        }
+
+        if(text.length > 300)
+        {
+            throw new HttpException(400,'text length cannot be more than 300 characters!')
+       
+        }
+
         let user = req.user;
+
+        let isValidId = isValidObjectId(status_id);
+
+        if(!isValidId){
+            throw new HttpException(400, {
+                message: 'This is not a valid status_id'
+            });
+        }
 
         let statusData = await Status.findById(status_id);
         
         if(!statusData) {
             throw new HttpException(404,'Status not found!')
         }
+
+        
 
         console.log(user,'<--')
 

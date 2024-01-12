@@ -7,7 +7,7 @@ const feedController = require('../controller/feed.controller.js');
 const authenticateToken = require('../middleware/auth.middleware.js');
 
 //adding limiter to open routes to prevent abuse
-router.post('/follow/:user_id',authenticateToken,awaitHandlerFactory(feedController.followUser))
+router.post('/follow/:user_id',authenticateToken, awaitHandlerFactory(feedController.followUser))
 router.get('/getFeed',authenticateToken,awaitHandlerFactory(feedController.getFeed))
 router.post('/create',authenticateToken,awaitHandlerFactory(feedController.createStatus))
 router.post('/action/comment/:status_id',authenticateToken,awaitHandlerFactory(feedController.commentAction))
